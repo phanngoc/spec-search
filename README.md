@@ -2,6 +2,9 @@
 
 A powerful tool for searching and indexing content from Google Sheets documents using vector search technology.
 
+![Index](./screen2.png)
+![Search](./screen1.png)
+
 ## Overview
 
 This application indexes content from Google Sheets documents into a vector database (ChromaDB) and provides a search interface to quickly find information across multiple spreadsheets. The system connects to Google Drive to access spreadsheets, processes their content, and makes them searchable using natural language queries.
