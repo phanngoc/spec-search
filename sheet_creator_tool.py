@@ -8,7 +8,7 @@ import re
 from langchain.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
-
+# https://python.langchain.com/docs/how_to/custom_tools/
 
 class GoogleSheetsToolkit:
     def __init__(self, credentials_path: str = "path/to/credentials.json"):
@@ -38,115 +38,125 @@ class GoogleSheetsToolkit:
     def get_spreedsheet(self):
         """Trả về spreadsheet hiện tại."""
         return self.spreadsheet
+    
+    def read_cell(self, sheet_name: str, cell: str) -> str:
+        """
+        Đọc giá trị từ ô chỉ định theo ký hiệu A1 và tên sheet.
+        
+        Args:
+            sheet_name: Tên sheet cần đọc dữ liệu
+            cell: Vị trí ô cần đọc theo ký hiệu A1 (ví dụ: "A1")
+        
+        Returns:
+            Giá trị trong ô theo vị trí chỉ định
+        """
+        return self.spreadsheet.worksheet(sheet_name).acell(cell).value
 
+    def write_cell(self, sheet_name: str, cell: str, value: str) -> str:
+        """
+        Ghi giá trị vào ô chỉ định theo ký hiệu A1 và tên sheet.
+        
+        Args:
+            sheet_name: Tên sheet cần ghi dữ liệu
+            cell: Vị trí ô cần ghi theo ký hiệu A1 (ví dụ: "A1") 
+            value: Giá trị cần ghi vào ô
+        
+        Returns:
+            Xác nhận đã ghi thành công
+        """
+        self.spreadsheet.worksheet(sheet_name).update_acell(cell, value)
+        return f"Đã ghi thành công giá trị '{value}' vào ô {cell} trong sheet {sheet_name}"
+
+    def read_values(self, sheet_name: str, range_str: str) -> List[List[str]]:
+        """
+        Đọc các giá trị từ phạm vi chỉ định theo ký hiệu A1 và tên sheet.
+        
+        Args:
+            sheet_name: Tên sheet cần đọc dữ liệu
+            range_str: Phạm vi cần đọc theo ký hiệu A1 (ví dụ: "A1:C5")
+        
+        Returns:
+            Danh sách các giá trị trong phạm vi
+        """
+        return self.spreadsheet.worksheet(sheet_name).get(range_str)
+
+    def write_values(self, sheet_name: str, range_str: str, values: List[List[str]]) -> str:
+        """
+        Ghi các giá trị vào phạm vi chỉ định theo ký hiệu A1 và tên sheet.
+        
+        Args:
+            sheet_name: Tên sheet cần ghi dữ liệu
+            range_str: Phạm vi cần ghi theo ký hiệu A1 (ví dụ: "A1:C5")
+            values: Danh sách các giá trị cần ghi (là list của list)
+        
+        Returns:
+            Xác nhận đã ghi thành công
+        """
+        self.spreadsheet.worksheet(sheet_name).update(range_str, values)
+        return f"Đã ghi thành công dữ liệu vào phạm vi {range_str} trong sheet {sheet_name}"
+
+    def suggest_data_type(self, data: str) -> str:
+        """
+        Gợi ý kiểu dữ liệu dựa trên giá trị cung cấp.
+        
+        Args:
+            data: Chuỗi dữ liệu cần xác định kiểu
+            
+        Returns:
+            Kiểu dữ liệu được gợi ý
+        """
+        if data.isdigit():
+            return "Số nguyên"
+        try:
+            float(data)
+            return "Số thực"
+        except ValueError:
+            pass
+        
+        if data.lower() in ['true', 'false', 'đúng', 'sai', 'có', 'không']:
+            return "Boolean"
+        
+        # Kiểm tra định dạng ngày tháng đơn giản
+        date_patterns = [
+            r'\d{1,2}/\d{1,2}/\d{2,4}',  # dd/mm/yyyy
+            r'\d{4}-\d{1,2}-\d{1,2}',    # yyyy-mm-dd
+        ]
+        for pattern in date_patterns:
+            if re.match(pattern, data):
+                return "Ngày tháng"
+        
+        return "Chuỗi"
+    
+    def get_tools(self) -> List[StructuredTool]:
+        """
+        Trả về danh sách các công cụ dưới dạng StructuredTool
+        
+        Returns:
+            List các công cụ
+        """
+        tools = [
+            StructuredTool.from_function(self.read_cell),
+            StructuredTool.from_function(self.write_cell),
+            StructuredTool.from_function(self.read_values),
+            StructuredTool.from_function(self.write_values),
+            StructuredTool.from_function(self.suggest_data_type)
+        ]
+        return tools
+
+
+# Khởi tạo toolkit và kết nối với spreadsheet
 toolkit = GoogleSheetsToolkit(
     credentials_path="./secret/glass-core-386002-9a86ff813d4a.json")
 toolkit.connect("1g9lniOcnHfB-v8FMKZWYocavO9TLm-mr6zM6JY2XLMk")
 # toolkit.create_spreadsheet("Dữ liệu mẫu LangGraph")
-
-spreadsheet = toolkit.get_spreedsheet()
-
-# Thêm các tool mới để đọc và ghi dữ liệu trong Google Sheets
-@tool
-def read_cell(sheet_name: str, cell: str) -> str:
-    """
-    Đọc giá trị từ ô chỉ định theo ký hiệu A1 và tên sheet.
-    
-    Args:
-        sheet_name: Tên sheet cần đọc dữ liệu
-        cell: Vị trí ô cần đọc theo ký hiệu A1 (ví dụ: "A1")
-    
-    Returns:
-        Giá trị trong ô theo vị trí chỉ định
-    """
-    return spreadsheet.worksheet(sheet_name).acell(cell).value
-
-@tool
-def write_cell(sheet_name: str, cell: str, value: str) -> str:
-    """
-    Ghi giá trị vào ô chỉ định theo ký hiệu A1 và tên sheet.
-    
-    Args:
-        sheet_name: Tên sheet cần ghi dữ liệu
-        cell: Vị trí ô cần ghi theo ký hiệu A1 (ví dụ: "A1") 
-        value: Giá trị cần ghi vào ô
-    
-    Returns:
-        Xác nhận đã ghi thành công
-    """
-    spreadsheet.worksheet(sheet_name).update_acell(cell, value)
-    return f"Đã ghi thành công giá trị '{value}' vào ô {cell} trong sheet {sheet_name}"
-
-@tool
-def read_values(sheet_name: str, range_str: str) -> List[List[str]]:
-    """
-    Đọc các giá trị từ phạm vi chỉ định theo ký hiệu A1 và tên sheet.
-    
-    Args:
-        sheet_name: Tên sheet cần đọc dữ liệu
-        range_str: Phạm vi cần đọc theo ký hiệu A1 (ví dụ: "A1:C5")
-    
-    Returns:
-        Danh sách các giá trị trong phạm vi
-    """
-    return spreadsheet.worksheet(sheet_name).get(range_str)
-
-@tool
-def write_values(sheet_name: str, range_str: str, values: List[List[str]]) -> str:
-    """
-    Ghi các giá trị vào phạm vi chỉ định theo ký hiệu A1 và tên sheet.
-    
-    Args:
-        sheet_name: Tên sheet cần ghi dữ liệu
-        range_str: Phạm vi cần ghi theo ký hiệu A1 (ví dụ: "A1:C5")
-        values: Danh sách các giá trị cần ghi (là list của list)
-    
-    Returns:
-        Xác nhận đã ghi thành công
-    """
-    spreadsheet.worksheet(sheet_name).update(range_str, values)
-    return f"Đã ghi thành công dữ liệu vào phạm vi {range_str} trong sheet {sheet_name}"
-
-@tool
-def suggest_data_type(data: str) -> str:
-    """
-    Gợi ý kiểu dữ liệu dựa trên giá trị cung cấp.
-    
-    Args:
-        data: Chuỗi dữ liệu cần xác định kiểu
-        
-    Returns:
-        Kiểu dữ liệu được gợi ý
-    """
-    if data.isdigit():
-        return "Số nguyên"
-    try:
-        float(data)
-        return "Số thực"
-    except ValueError:
-        pass
-    
-    if data.lower() in ['true', 'false', 'đúng', 'sai', 'có', 'không']:
-        return "Boolean"
-    
-    # Kiểm tra định dạng ngày tháng đơn giản
-    date_patterns = [
-        r'\d{1,2}/\d{1,2}/\d{2,4}',  # dd/mm/yyyy
-        r'\d{4}-\d{1,2}-\d{1,2}',    # yyyy-mm-dd
-    ]
-    for pattern in date_patterns:
-        if re.match(pattern, data):
-            return "Ngày tháng"
-    
-    return "Chuỗi"
 
 
 # Sử dụng LangGraph ReAct agent
 def example_with_react_agent():
     # Tạo và kết nối Google Sheets toolkit
     try:
-        # Lấy các tool
-        tools = [read_cell, write_cell, read_values, write_values, suggest_data_type]
+        # Lấy các tool từ toolkit
+        tools = toolkit.get_tools()
 
         # Khởi tạo mô hình ngôn ngữ (LLM)
         model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
@@ -187,4 +197,4 @@ def example_with_react_agent():
         return f"Lỗi: {str(e)}"
 
 if __name__ == "__main__":
-    example_with_react_agent() 
+    example_with_react_agent()
